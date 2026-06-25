@@ -6,4 +6,4 @@ Este repo vendoriza el paquete `meta_ads_mcp` de
 
 - Commit vendorizado: `762c224b060b233b66fb9af8a2f3865303ed757b`
 - Fecha: 2026-06-25
-- Modificaciones locales: meta_ads_mcp/runtime_env.py (carga .env con python-dotenv) y meta_ads_mcp/__main__.py (carga el entorno al arrancar).
+- Modificaciones locales: meta_ads_mcp/runtime_env.py (carga .env con python-dotenv), meta_ads_mcp/__main__.py (carga el entorno al arrancar) y meta_ads_mcp/server.py (parche allowlist solo-lectura).

@@ -15,6 +15,31 @@ mcp = FastMCP(
     instructions="Supervised Meta Ads Operating System for Claude Code. Create, read, update, duplicate campaigns, ad sets, and ads with validation gates, naming enforcement, and operator control.",
 )
 
+# --- Solo-lectura (Narkan) -------------------------------------------------
+# Solo estas tools se registran. Cada tool de escritura/gestión queda fuera
+# porque filtramos el decorador @mcp.tool ANTES de importar los módulos core
+# (que registran por efecto secundario al importarse).
+READ_ONLY_TOOLS = {
+    "check_token_status", "get_ad_accounts", "discover_all_accounts",
+    "get_campaigns", "get_campaign_details", "get_adsets", "get_adset_details",
+    "get_ads", "get_ad_details", "get_insights", "get_bulk_insights",
+}
+
+_real_tool = mcp.tool
+
+
+def _readonly_tool(*args, **kwargs):
+    def decorator(fn):
+        if fn.__name__ in READ_ONLY_TOOLS:
+            return _real_tool(*args, **kwargs)(fn)
+        return fn  # no se registra
+
+    return decorator
+
+
+mcp.tool = _readonly_tool
+# ---------------------------------------------------------------------------
+
 # ============================================================
 # PUBLIC TOOLS (open-core, always available)
 # ============================================================

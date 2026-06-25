@@ -28,3 +28,6 @@ include = ["meta_ads_mcp*"]
 
 [tool.mcp]
 name = "io.github.konquest/meta-ads-mcp"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
