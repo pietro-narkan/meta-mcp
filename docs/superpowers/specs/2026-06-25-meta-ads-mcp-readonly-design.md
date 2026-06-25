@@ -62,22 +62,24 @@ Meta Graph API v25.0  →  graph.facebook.com
 ## 4. Estructura del repo
 
 ```
-meta-ads-mcp/                 (privado, org de Narkan en GitHub)
+meta-mcp/                     (privado, cuenta GitHub personal de Pietro — esta carpeta)
 ├── meta_ads_mcp/             # código konquest vendorizado (MIT, atribución intacta)
 │   ├── server.py             # + parche allowlist solo-lectura
 │   └── ... (core/*, api.py, auth.py, etc. sin cambios)
 ├── .mcp.json                 # registro del server para Claude Code — SIN secretos
 ├── .env.example              # plantilla: META_ACCESS_TOKEN=...
 ├── .gitignore                # incluye .env  ← el token nunca entra a git
-├── setup.sh                  # onboarding de 1 comando (macOS/Linux/WSL)
+├── setup.sh                  # onboarding 1 comando (macOS/Linux)
+├── setup.ps1                 # onboarding 1 comando (Windows / PowerShell)
 ├── pyproject.toml / uv.lock  # deps konquest + python-dotenv
 ├── LICENSE                   # MIT original + atribución a konquest/AgentStack
 └── README.md                 # guía del trabajador (español)
 ```
 
-Se crea un **repo nuevo y privado** vendorizando konquest (MIT lo permite, conservando
-copyright/aviso), en vez de un fork público, para poder distribuirlo en privado y aplicar
-el recorte. El nombre/org exactos se confirman al crear el repo.
+El repo es **esta carpeta** (`meta-mcp`), privada, en la **cuenta personal de GitHub** de
+Pietro (`pietro-narkan`) — **sin organización**. Los trabajadores se añaden como
+**colaboradores**. Se vendoriza konquest (MIT lo permite, conservando copyright/aviso) en
+vez de un fork público, para distribuirlo en privado y aplicar el recorte.
 
 ## 5. Garantía de solo-lectura (doble candado)
 
@@ -118,8 +120,10 @@ archivo local) y **todas las 19 de escritura/gestión**.
   añade `python-dotenv` + `load_dotenv()` al arranque del servidor para cargar `.env`.
 - `.env` (gitignored) contiene `META_ACCESS_TOKEN=<token solo-lectura compartido>`.
 - `.mcp.json` (commiteado, **sin** secretos) registra el server:
-  `uv --directory <ruta> run python -m meta_ads_mcp`. La ruta absoluta la fija `setup.sh`
-  (o se usa una `.mcp.json.example` portable que el setup materializa).
+  `uv --directory <ruta> run python -m meta_ads_mcp`. Este comando es **multiplataforma**
+  (uv corre igual en macOS y Windows); cada script de setup (`setup.sh`/`setup.ps1`) escribe
+  la ruta correcta para su SO. Cargar `.env` con `python-dotenv` evita un launcher de bash,
+  lo que mantiene el arranque idéntico en ambos sistemas.
 - `META_APP_SECRET` (appsecret_proof) y `META_APP_ID` quedan **opcionales**, fuera del MVP
   por simplicidad; se documentan como endurecimiento opcional.
 - El token se entrega a cada trabajador **fuera de banda** (gestor de contraseñas) y
@@ -128,16 +132,18 @@ archivo local) y **todas las 19 de escritura/gestión**.
 ## 7. Onboarding del trabajador
 
 ```
-1. git clone <repo-privado>
-2. ./setup.sh
-3. Abrir Claude Code en la carpeta → preguntar
+# macOS / Linux:               # Windows (PowerShell):
+git clone <repo-privado>        git clone <repo-privado>
+cd meta-mcp                     cd meta-mcp
+./setup.sh                      .\setup.ps1
+# luego: abrir Claude Code en la carpeta → preguntar
 ```
 
-`setup.sh` (macOS/Linux/WSL) hace:
-1. Verifica/instala `uv` si falta.
+`setup.sh` (macOS/Linux) y `setup.ps1` (Windows) hacen lo mismo:
+1. Verifica/instala `uv` si falta (instalador oficial por SO).
 2. `uv sync` (instala deps + python-dotenv).
 3. Si no existe `.env`, lo crea desde `.env.example` y pide el token una vez (lo pega).
-4. Genera/ajusta `.mcp.json` con la ruta correcta del repo.
+4. Genera/ajusta `.mcp.json` con la ruta correcta del repo para ese SO.
 5. **Health-check**: corre `check_token_status` y lista las cuentas accesibles; si el token
    es inválido, avisa claramente.
 
@@ -165,12 +171,13 @@ admin rota el token compartido si un trabajador se va.
 - Confirmar que ninguna tool de escritura aparece en la lista de tools del MCP (allowlist
   efectiva).
 
-## 10. Supuestos a confirmar
+## 10. Parámetros del entorno (confirmados)
 
-- **SO de los trabajadores:** macOS/Linux (o Windows vía WSL). Si hay Windows nativo, se
-  añade `setup.ps1` en una iteración posterior.
-- **Repo destino:** nuevo y privado en la org de GitHub de Narkan; nombre/org se confirman
-  al momento de crearlo.
+- **SO de los trabajadores:** **macOS y Windows nativo** (un trabajador en cada uno). Se
+  incluyen ambos scripts: `setup.sh` (macOS) y `setup.ps1` (Windows). uv y python-dotenv son
+  multiplataforma, así que el server y `.mcp.json` son idénticos en ambos.
+- **Repo destino:** **esta carpeta** (`meta-mcp`), privada, en la **cuenta personal de
+  GitHub** de Pietro (`pietro-narkan`) — sin organización. Trabajadores como colaboradores.
 
 ## 11. Fase 2 (futuro, no ahora)
 
