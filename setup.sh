@@ -19,7 +19,7 @@ if [ ! -f .env ]; then
   printf "    Pega tu token de SOLO LECTURA de Meta y pulsa Enter:\n    > "
   read -rs TOKEN
   echo
-  TOKEN="$TOKEN" python3 - <<'PY'
+  TOKEN="$TOKEN" uv run python - <<'PY'
 import os, pathlib
 tok = os.environ["TOKEN"].strip()
 p = pathlib.Path(".env")

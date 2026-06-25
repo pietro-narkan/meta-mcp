@@ -29,10 +29,15 @@ _real_tool = mcp.tool
 
 
 def _readonly_tool(*args, **kwargs):
+    # Soporta @mcp.tool(...) (con paréntesis) y @mcp.tool (sin paréntesis).
+    if len(args) == 1 and callable(args[0]) and not kwargs:
+        fn = args[0]
+        return _real_tool(fn) if fn.__name__ in READ_ONLY_TOOLS else fn
+
     def decorator(fn):
         if fn.__name__ in READ_ONLY_TOOLS:
             return _real_tool(*args, **kwargs)(fn)
-        return fn  # no se registra
+        return fn
 
     return decorator
 
@@ -232,12 +237,12 @@ if PREMIUM_AVAILABLE:
 
     _register_engine_tools()
 else:
-    logger.info("Open-core mode - %s public tools loaded. Premium tools not available.", "55")
+    logger.info("Read-only mode - %d reporting tools loaded.", len(READ_ONLY_TOOLS))
 
 
 def main():
     """Run the MCP server via stdio transport."""
-    mode = "premium (98 tools)" if PREMIUM_AVAILABLE else "open-core (55 tools)"
+    mode = "premium (98 tools)" if PREMIUM_AVAILABLE else f"read-only ({len(READ_ONLY_TOOLS)} reporting tools)"
     logger.info("Starting KonQuest Meta Ads MCP server v%s [%s]", "2.0.0", mode)
     mcp.run(transport="stdio")
 

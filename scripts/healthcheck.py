@@ -28,12 +28,12 @@ def fetch(token: str) -> dict:
 
 def format_report(data: dict) -> str:
     lines = [
-        f"✅ Token válido — usuario: {data['name']}",
+        f"✅ Token válido — usuario: {data.get('name')}",
         f"Cuentas accesibles: {len(data['accounts'])}",
     ]
     for a in data["accounts"]:
         state = "activa" if a.get("account_status") == 1 else f"estado {a.get('account_status')}"
-        lines.append(f"  - act_{a['account_id']} · {a.get('name')} ({state})")
+        lines.append(f"  - act_{a.get('account_id')} · {a.get('name')} ({state})")
     return "\n".join(lines)
 
 
