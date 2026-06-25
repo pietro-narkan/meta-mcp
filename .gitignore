@@ -6,6 +6,7 @@
 .venv/
 __pycache__/
 *.pyc
+*.egg-info/
 
 # Datos locales opcionales de konquest
 marketing-vault/
