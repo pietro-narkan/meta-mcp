@@ -1,0 +1,12 @@
+# Secretos y config local
+.env
+.mcp.json
+
+# Python / uv
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+
+# Datos locales opcionales de konquest
+marketing-vault/
