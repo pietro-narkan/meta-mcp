@@ -1,0 +1,11 @@
+# Secretos y config local
+.env
+.mcp.json
+
+# Python / uv
+.venv/
+__pycache__/
+*.pyc
+
+# Datos locales opcionales de konquest
+marketing-vault/
