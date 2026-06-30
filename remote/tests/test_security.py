@@ -18,3 +18,9 @@ def test_require_secret_rejects_empty_or_short(monkeypatch):
     monkeypatch.setattr(security.config, "MCP_SECRET", "short")
     with pytest.raises(RuntimeError):
         security.require_secret()
+
+
+def test_require_secret_rejects_non_url_safe_chars(monkeypatch):
+    monkeypatch.setattr(security.config, "MCP_SECRET", "valid_secret_but/has_slash_here!")
+    with pytest.raises(RuntimeError):
+        security.require_secret()

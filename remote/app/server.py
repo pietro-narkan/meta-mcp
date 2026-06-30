@@ -32,5 +32,4 @@ app.add_middleware(
     allow_methods=["GET", "POST", "OPTIONS", "DELETE"],
     allow_headers=["Content-Type", "Mcp-Session-Id", "MCP-Protocol-Version"],
     expose_headers=["Mcp-Session-Id"],
-    allow_credentials=True,
 )

@@ -15,7 +15,8 @@ async def test_get_builds_url_and_returns_json():
     assert out == {"data": [{"id": "1"}]}
     assert route.called
     sent = route.calls.last.request
-    assert sent.url.params["access_token"] == "TOK"
+    assert sent.headers["Authorization"] == "Bearer TOK"
+    assert "access_token" not in sent.url.params
     assert sent.url.params["fields"] == "id"
 
 

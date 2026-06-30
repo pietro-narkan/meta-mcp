@@ -1,8 +1,11 @@
 import os
 import pytest
-from app import tools
 
+# Must be set before any app.* imports so app.config reads them at cache time.
 os.environ.setdefault("META_ACCESS_TOKEN", "TEST_DUMMY_TOKEN")
+os.environ.setdefault("MCP_SECRET", "test_secret_minimum_16_plus_chars")
+
+from app import tools
 
 
 class FakeClient:
