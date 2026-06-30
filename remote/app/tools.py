@@ -105,8 +105,34 @@ async def get_ad_details(ad_id: str) -> dict:
     return await get_client().get(ad_id, {"fields": _AD_FIELDS})
 
 
+_INSIGHT_FIELDS = "spend,impressions,clicks,ctr,cpc,cpm,reach,frequency"
+
+
+async def get_insights(account_id: str, date_preset: str = "last_30d") -> dict:
+    """Métricas agregadas de una cuenta para un periodo (date_preset)."""
+    res = await get_client().get(
+        f"{_acct(account_id)}/insights",
+        {"fields": _INSIGHT_FIELDS, "date_preset": date_preset},
+    )
+    return {"date_preset": date_preset, "data": res.get("data", [])}
+
+
+async def get_bulk_insights(account_id: str, level: str = "campaign", date_preset: str = "last_30d") -> dict:
+    """Métricas desglosadas por nivel (campaign|adset|ad) para un periodo."""
+    res = await get_client().get(
+        f"{_acct(account_id)}/insights",
+        {
+            "fields": f"{level}_name,{_INSIGHT_FIELDS}",
+            "level": level,
+            "date_preset": date_preset,
+            "limit": "200",
+        },
+    )
+    return {"level": level, "date_preset": date_preset, "data": res.get("data", [])}
+
+
 TOOLS = [
     check_token_status, get_ad_accounts, discover_all_accounts,
     get_campaigns, get_campaign_details, get_adsets, get_adset_details,
-    get_ads, get_ad_details,
+    get_ads, get_ad_details, get_insights, get_bulk_insights,
 ]
