@@ -56,4 +56,57 @@ async def discover_all_accounts() -> dict:
     return await get_ad_accounts()
 
 
-TOOLS = [check_token_status, get_ad_accounts, discover_all_accounts]
+_CAMPAIGN_FIELDS = "id,name,status,effective_status,objective,daily_budget,lifetime_budget,start_time,stop_time,created_time,updated_time"
+_ADSET_FIELDS = "id,name,status,effective_status,daily_budget,lifetime_budget,optimization_goal,billing_event"
+_AD_FIELDS = "id,name,status,effective_status,created_time,updated_time"
+
+
+def _status_counts(rows: list[dict]) -> dict:
+    counts: dict[str, int] = {}
+    for r in rows:
+        s = r.get("status", "UNKNOWN")
+        counts[s] = counts.get(s, 0) + 1
+    return counts
+
+
+async def get_campaigns(account_id: str) -> dict:
+    """Lista las campañas de una cuenta (con conteo por estado)."""
+    res = await get_client().get(f"{_acct(account_id)}/campaigns", {"fields": _CAMPAIGN_FIELDS, "limit": "100"})
+    rows = res.get("data", [])
+    return {"total": len(rows), "status_counts": _status_counts(rows), "campaigns": rows}
+
+
+async def get_campaign_details(campaign_id: str) -> dict:
+    """Detalle de una campaña por id."""
+    return await get_client().get(campaign_id, {"fields": _CAMPAIGN_FIELDS})
+
+
+async def get_adsets(account_id: str) -> dict:
+    """Lista los conjuntos de anuncios de una cuenta."""
+    res = await get_client().get(f"{_acct(account_id)}/adsets", {"fields": _ADSET_FIELDS, "limit": "100"})
+    rows = res.get("data", [])
+    return {"total": len(rows), "status_counts": _status_counts(rows), "adsets": rows}
+
+
+async def get_adset_details(adset_id: str) -> dict:
+    """Detalle de un conjunto de anuncios por id."""
+    return await get_client().get(adset_id, {"fields": _ADSET_FIELDS})
+
+
+async def get_ads(account_id: str) -> dict:
+    """Lista los anuncios de una cuenta."""
+    res = await get_client().get(f"{_acct(account_id)}/ads", {"fields": _AD_FIELDS, "limit": "100"})
+    rows = res.get("data", [])
+    return {"total": len(rows), "status_counts": _status_counts(rows), "ads": rows}
+
+
+async def get_ad_details(ad_id: str) -> dict:
+    """Detalle de un anuncio por id."""
+    return await get_client().get(ad_id, {"fields": _AD_FIELDS})
+
+
+TOOLS = [
+    check_token_status, get_ad_accounts, discover_all_accounts,
+    get_campaigns, get_campaign_details, get_adsets, get_adset_details,
+    get_ads, get_ad_details,
+]
