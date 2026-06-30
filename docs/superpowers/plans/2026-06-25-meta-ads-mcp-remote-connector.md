@@ -16,9 +16,9 @@
 - **Tools (exactas, 11):** `check_token_status, get_ad_accounts, discover_all_accounts, get_campaigns, get_campaign_details, get_adsets, get_adset_details, get_ads, get_ad_details, get_insights, get_bulk_insights`.
 - **Transporte:** Streamable HTTP, endpoint `/mcp`, `stateless_http=True`.
 - **Graph API:** `https://graph.facebook.com/v25.0` (constante).
-- **Auth:** `OAuthProxy` → Google. `JWTVerifier`: `jwks_uri=https://www.googleapis.com/.well-known/jwks.json`, `issuer=https://accounts.google.com`, `audience=$GOOGLE_CLIENT_ID`. Allowlist por `ALLOWED_EMAILS` (default `agencia.narkan@gmail.com`); exigir `email_verified==true`. `base_url=$MCP_BASE_URL` (`https://mcp.plasa.cl`). Redirect de claude.ai aceptado: `https://claude.ai/api/mcp/auth_callback`. Redirect de Google (en la app de Google): `https://mcp.plasa.cl/auth/callback`.
-- **CORS:** `allow_origins=["https://claude.ai"]`, `expose_headers=["Mcp-Session-Id"]`, `allow_headers` incluye `Authorization, Content-Type, Mcp-Session-Id, MCP-Protocol-Version`.
-- **Secretos solo en env (Dokploy), nunca en git:** `META_ACCESS_TOKEN`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_CLIENT_ID`, `MCP_BASE_URL`, `ALLOWED_EMAILS`. `.env` ya está gitignored globalmente.
+- **Acceso (sin OAuth/login):** el MCP se sirve en la ruta `/<MCP_SECRET>/mcp` (el secreto es la contraseña compartida); cualquier otra ruta → 404. `/health` en la raíz, sin secreto. URL del conector: `https://mcp.plasa.cl/<MCP_SECRET>/mcp`.
+- **CORS:** `allow_origins=["https://claude.ai"]`, `expose_headers=["Mcp-Session-Id"]`, `allow_headers` incluye `Content-Type, Mcp-Session-Id, MCP-Protocol-Version`.
+- **Secretos solo en env (Dokploy), nunca en git:** `META_ACCESS_TOKEN`, `MCP_SECRET`. `.env` ya está gitignored globalmente.
 - **Dominio:** `mcp.plasa.cl`, TLS por Traefik/Let's Encrypt. Endpoint `/health` → 200.
 - README/mensajes en español.
 
@@ -28,18 +28,18 @@
 remote/
 ├── app/
 │   ├── __init__.py
-│   ├── config.py     # lee env: token, google creds, base_url, allowed_emails
+│   ├── config.py     # lee env: META_ACCESS_TOKEN, MCP_SECRET
 │   ├── meta.py       # MetaClient: GET async a Graph v25.0
 │   ├── tools.py      # las 11 funciones async + TOOLS + get_client()
-│   ├── auth.py       # is_email_allowed() + build_auth() (OAuthProxy→Google)
-│   └── server.py     # FastMCP + registra tools + auth + CORS + /health + `app` ASGI
+│   ├── security.py   # require_secret() + mcp_path(secret) -> "/<secreto>/mcp"
+│   └── server.py     # FastMCP + monta MCP en /<secreto>/mcp + CORS + /health + `app` ASGI
 ├── tests/
 │   ├── conftest.py
 │   ├── test_meta.py
 │   ├── test_tools_accounts.py
 │   ├── test_tools_hierarchy.py
 │   ├── test_tools_insights.py
-│   └── test_auth.py
+│   └── test_security.py
 ├── pyproject.toml / uv.lock / .python-version
 ├── Dockerfile
 ├── .env.example
@@ -97,14 +97,7 @@ GRAPH_VERSION = "v25.0"
 GRAPH_BASE = f"https://graph.facebook.com/{GRAPH_VERSION}"
 
 META_ACCESS_TOKEN = os.environ.get("META_ACCESS_TOKEN", "")
-GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
-GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "")
-MCP_BASE_URL = os.environ.get("MCP_BASE_URL", "https://mcp.plasa.cl")
-ALLOWED_EMAILS = {
-    e.strip().lower()
-    for e in os.environ.get("ALLOWED_EMAILS", "agencia.narkan@gmail.com").split(",")
-    if e.strip()
-}
+MCP_SECRET = os.environ.get("MCP_SECRET", "")
 ```
 
 - [ ] **Step 5: Instalar y verificar import**
@@ -654,113 +647,81 @@ git commit -m "feat(remote): tools de insights y verificación de 11 tools solo-
 
 ---
 
-### Task 6: Autenticación (`remote/app/auth.py`)
+### Task 6: Candado por ruta secreta (`remote/app/security.py`)
 
 **Files:**
-- Create: `remote/app/auth.py`
-- Test: `remote/tests/test_auth.py`
+- Create: `remote/app/security.py`
+- Test: `remote/tests/test_security.py`
 
 **Interfaces:**
-- Consumes: `app.config` (GOOGLE_*, MCP_BASE_URL, ALLOWED_EMAILS).
+- Consumes: `app.config.MCP_SECRET`.
 - Produces:
-  - `def is_email_allowed(claims: dict, allowed: set[str]) -> bool` (pura, testeable).
-  - `def build_auth()` → instancia de auth de fastmcp lista para pasar a `FastMCP(auth=...)`.
+  - `def mcp_path(secret: str) -> str` → `"/<secret>/mcp"` (ruta donde se monta el MCP).
+  - `def require_secret() -> str` → devuelve `config.MCP_SECRET`; lanza `RuntimeError` si está vacío o tiene <16 chars.
 
-- [ ] **Step 1: Descubrir la API instalada de fastmcp (evita adivinar firmas)**
-
-Run: `cd remote && uv run python -c "import fastmcp, inspect; from fastmcp.server.auth import OAuthProxy; from fastmcp.server.auth.providers.jwt import JWTVerifier; print('fastmcp', fastmcp.__version__); print('OAuthProxy', inspect.signature(OAuthProxy.__init__)); print('JWTVerifier', inspect.signature(JWTVerifier.__init__))"`
-Expected: imprime la versión y las firmas reales. **Usa esas firmas**; si difieren de las de abajo (nombres de parámetros), ajusta `build_auth()` en consecuencia y anótalo en el reporte. Si los imports fallan (ruta del módulo cambió), localiza la correcta con `uv run python -c "import fastmcp.server.auth as a; print(dir(a))"`.
-
-- [ ] **Step 2: Escribir el test que falla (solo la política de allowlist, que es pura)**
+- [ ] **Step 1: Escribir el test que falla**
 
 ```python
-# remote/tests/test_auth.py
-from app.auth import is_email_allowed
-
-ALLOWED = {"agencia.narkan@gmail.com"}
-
-
-def test_allows_exact_verified_email():
-    assert is_email_allowed({"email": "agencia.narkan@gmail.com", "email_verified": True}, ALLOWED) is True
+# remote/tests/test_security.py
+import pytest
+from app import security
 
 
-def test_rejects_other_email():
-    assert is_email_allowed({"email": "otro@gmail.com", "email_verified": True}, ALLOWED) is False
+def test_mcp_path_builds_secret_route():
+    assert security.mcp_path("abc123") == "/abc123/mcp"
 
 
-def test_rejects_unverified_email():
-    assert is_email_allowed({"email": "agencia.narkan@gmail.com", "email_verified": False}, ALLOWED) is False
+def test_require_secret_returns_value(monkeypatch):
+    monkeypatch.setattr(security.config, "MCP_SECRET", "x" * 32)
+    assert security.require_secret() == "x" * 32
 
 
-def test_is_case_insensitive_and_handles_missing():
-    assert is_email_allowed({"email": "Agencia.Narkan@Gmail.com", "email_verified": True}, ALLOWED) is True
-    assert is_email_allowed({}, ALLOWED) is False
+def test_require_secret_rejects_empty_or_short(monkeypatch):
+    monkeypatch.setattr(security.config, "MCP_SECRET", "")
+    with pytest.raises(RuntimeError):
+        security.require_secret()
+    monkeypatch.setattr(security.config, "MCP_SECRET", "short")
+    with pytest.raises(RuntimeError):
+        security.require_secret()
 ```
 
-- [ ] **Step 3: Ejecutar y verificar que falla**
+- [ ] **Step 2: Ejecutar y verificar que falla**
 
-Run: `cd remote && uv run pytest tests/test_auth.py -v`
-Expected: FAIL (`ModuleNotFoundError: app.auth`).
+Run: `cd remote && uv run pytest tests/test_security.py -v`
+Expected: FAIL (`ModuleNotFoundError: app.security`).
 
-- [ ] **Step 4: Crear `remote/app/auth.py`**
+- [ ] **Step 3: Crear `remote/app/security.py`**
 
 ```python
-"""OAuth para claude.ai: OAuthProxy delega a Google; allowlist por email."""
+"""Candado por ruta secreta: el MCP se sirve en /<MCP_SECRET>/mcp."""
 from __future__ import annotations
 
 from app import config
 
 
-def is_email_allowed(claims: dict, allowed: set[str]) -> bool:
-    """True solo si el email está verificado y en la allowlist (case-insensitive)."""
-    email = (claims.get("email") or "").strip().lower()
-    if not email or not claims.get("email_verified"):
-        return False
-    return email in {a.strip().lower() for a in allowed}
+def mcp_path(secret: str) -> str:
+    """Ruta donde se monta el endpoint MCP."""
+    return f"/{secret}/mcp"
 
 
-def build_auth():
-    """Construye el proveedor de auth de fastmcp (OAuthProxy → Google).
-
-    Ajusta los nombres de parámetros a la firma real descubierta en el Step 1
-    de esta tarea si difieren.
-    """
-    from fastmcp.server.auth import OAuthProxy
-    from fastmcp.server.auth.providers.jwt import JWTVerifier
-
-    class _AllowlistVerifier(JWTVerifier):
-        async def verify_token(self, token: str):
-            result = await super().verify_token(token)
-            if result is None:
-                return None
-            claims = getattr(result, "claims", None) or {}
-            return result if is_email_allowed(claims, config.ALLOWED_EMAILS) else None
-
-    verifier = _AllowlistVerifier(
-        jwks_uri="https://www.googleapis.com/.well-known/jwks.json",
-        issuer="https://accounts.google.com",
-        audience=config.GOOGLE_CLIENT_ID,
-    )
-    return OAuthProxy(
-        upstream_authorization_endpoint="https://accounts.google.com/o/oauth2/v2/auth",
-        upstream_token_endpoint="https://oauth2.googleapis.com/token",
-        upstream_client_id=config.GOOGLE_CLIENT_ID,
-        upstream_client_secret=config.GOOGLE_CLIENT_SECRET,
-        token_verifier=verifier,
-        base_url=config.MCP_BASE_URL,
-    )
+def require_secret() -> str:
+    """Devuelve MCP_SECRET o lanza si falta / es demasiado corto (<16 chars)."""
+    secret = config.MCP_SECRET
+    if not secret or len(secret) < 16:
+        raise RuntimeError("MCP_SECRET ausente o demasiado corto (>=16 chars).")
+    return secret
 ```
 
-- [ ] **Step 5: Ejecutar y verificar que pasa**
+- [ ] **Step 4: Ejecutar y verificar que pasa**
 
-Run: `cd remote && uv run pytest tests/test_auth.py -v`
-Expected: PASS (4 tests). (Nota: `build_auth()` no se ejecuta en estos tests; se valida en el smoke/despliegue.)
+Run: `cd remote && uv run pytest tests/test_security.py -v`
+Expected: PASS (3 tests).
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
-git add remote/app/auth.py remote/tests/test_auth.py
-git commit -m "feat(remote): auth OAuthProxy->Google con allowlist de email"
+git add remote/app/security.py remote/tests/test_security.py
+git commit -m "feat(remote): candado por ruta secreta (mcp_path + require_secret)"
 ```
 
 ---
@@ -771,18 +732,21 @@ git commit -m "feat(remote): auth OAuthProxy->Google con allowlist de email"
 - Create: `remote/app/server.py`
 
 **Interfaces:**
-- Consumes: `tools.TOOLS`, `auth.build_auth`.
-- Produces: objeto ASGI `app` (servible por uvicorn) que monta el MCP Streamable HTTP en `/mcp`, CORS para claude.ai, y `/health`.
+- Consumes: `tools.TOOLS`, `security.mcp_path`, `security.require_secret`.
+- Produces: objeto ASGI `app` (servible por uvicorn) que sirve el MCP Streamable HTTP en `/<MCP_SECRET>/mcp`, CORS para claude.ai, y `/health` en la raíz.
 
-- [ ] **Step 1: Descubrir la API de http_app/stateless de la versión instalada**
+- [ ] **Step 1: Descubrir la API de http_app de la versión instalada**
 
-Run: `cd remote && uv run python -c "import inspect; from fastmcp import FastMCP; print('http_app', inspect.signature(FastMCP.http_app))"`
-Expected: imprime la firma de `http_app`. Si admite `stateless_http`, pásalo; si no, busca el parámetro equivalente con `print([p for p in inspect.signature(FastMCP.http_app).parameters])` y úsalo. Anota lo que encuentres.
+Run: `cd remote && uv run python -c "import inspect; from fastmcp import FastMCP; print(list(inspect.signature(FastMCP.http_app).parameters))"`
+Expected: imprime los parámetros de `http_app`. Si admite `path=`, úsalo (camino A). Si admite `stateless_http=`, pásalo. Si NO admite `path=`, usa el camino B (fallback). Anota los parámetros reales.
 
-- [ ] **Step 2: Crear `remote/app/server.py`**
+- [ ] **Step 2: Crear `remote/app/server.py`** (camino A: `http_app(path=...)`)
 
 ```python
-"""Servidor MCP remoto Streamable HTTP para claude.ai (solo lectura)."""
+"""Servidor MCP remoto Streamable HTTP para claude.ai (solo lectura).
+
+El MCP se sirve en /<MCP_SECRET>/mcp; /health en la raíz; otras rutas -> 404.
+"""
 from __future__ import annotations
 
 from fastmcp import FastMCP
@@ -791,9 +755,9 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from app import tools
-from app.auth import build_auth
+from app.security import mcp_path, require_secret
 
-mcp = FastMCP("Narkan Meta Ads (solo lectura)", auth=build_auth())
+mcp = FastMCP("Narkan Meta Ads (solo lectura)")
 
 for _fn in tools.TOOLS:
     mcp.tool(_fn)
@@ -804,36 +768,49 @@ async def _health(_request: Request) -> JSONResponse:
     return JSONResponse({"status": "ok"})
 
 
-# ASGI app con el MCP en /mcp (stateless). Ajusta el kwarg si el Step 1 mostró otro nombre.
-app = mcp.http_app(stateless_http=True)
+# El MCP se sirve en la ruta secreta (conserva su lifespan intacto).
+app = mcp.http_app(path=mcp_path(require_secret()), stateless_http=True)
 
-# CORS para claude.ai
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["https://claude.ai"],
     allow_methods=["GET", "POST", "OPTIONS", "DELETE"],
-    allow_headers=["Authorization", "Content-Type", "Mcp-Session-Id", "MCP-Protocol-Version"],
+    allow_headers=["Content-Type", "Mcp-Session-Id", "MCP-Protocol-Version"],
     expose_headers=["Mcp-Session-Id"],
     allow_credentials=True,
 )
 ```
 
-- [ ] **Step 3: Verificar import y arranque básico (sin credenciales reales)**
+> **Camino B (fallback, si `http_app` NO admite `path=`):** monta el MCP bajo un Starlette padre y **propaga el lifespan** (si no, el endpoint da "task group not initialized"):
+> ```python
+> from starlette.applications import Starlette
+> from starlette.routing import Mount, Route
+> _mcp = mcp.http_app(stateless_http=True)
+> app = Starlette(
+>     routes=[Route("/health", _health, methods=["GET"]), Mount(f"/{require_secret()}", app=_mcp)],
+>     lifespan=_mcp.lifespan,
+> )
+> # luego app.add_middleware(CORSMiddleware, ...) igual que en el camino A
+> ```
 
-Run: `cd remote && env GOOGLE_CLIENT_ID=test GOOGLE_CLIENT_SECRET=test uv run python -c "from app.server import app; print('app ok', type(app).__name__)"`
-Expected: imprime `app ok ...` sin excepción. Si `build_auth()` exige red al construir y falla, captúralo y repórtalo (puede requerir mover la construcción del verifier a lazy); de lo contrario, OK.
+- [ ] **Step 3: Verificar import y arranque básico**
 
-- [ ] **Step 4: Verificar `/health` y que `/mcp` exige auth**
+Run: `cd remote && env META_ACCESS_TOKEN=dummy MCP_SECRET=$(python3 -c "import secrets;print(secrets.token_urlsafe(24))") uv run python -c "from app.server import app; print('app ok', type(app).__name__)"`
+Expected: imprime `app ok ...` sin excepción.
+
+- [ ] **Step 4: Verificar `/health`, la ruta secreta y el 404**
 
 ```bash
-cd remote && env GOOGLE_CLIENT_ID=test GOOGLE_CLIENT_SECRET=test META_ACCESS_TOKEN=dummy \
+cd remote && SECRET=$(python3 -c "import secrets;print(secrets.token_urlsafe(24))")
+env META_ACCESS_TOKEN=dummy MCP_SECRET="$SECRET" \
   uv run uvicorn app.server:app --host 127.0.0.1 --port 8011 &
 sleep 3
 curl -s -o /dev/null -w "health=%{http_code}\n" http://127.0.0.1:8011/health
-curl -s -o /dev/null -w "mcp_noauth=%{http_code}\n" -X POST http://127.0.0.1:8011/mcp -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+curl -s -o /dev/null -w "nosecret=%{http_code}\n" -X POST http://127.0.0.1:8011/mcp -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}'
+curl -s -o /dev/null -w "secret_mcp=%{http_code}\n" -X POST "http://127.0.0.1:8011/$SECRET/mcp" -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"t","version":"1"}}}'
 kill %1 2>/dev/null
 ```
-Expected: `health=200`. `mcp_noauth` debe ser `401` (o `400/406` si pide headers de protocolo) — el punto es que NO devuelve 200 con la lista de tools sin auth. Anota el código real.
+Expected: `health=200`; `nosecret=404` (ruta sin secreto no existe); `secret_mcp` NO es 404 (200, o 400/406 si faltan headers de protocolo — el endpoint existe en la ruta secreta). Anota los códigos reales.
 
 - [ ] **Step 5: Commit**
 
@@ -880,13 +857,8 @@ tests/
 ```bash
 # Token de Meta de SOLO LECTURA (System User, ads_read). Solo en Dokploy, nunca en git.
 META_ACCESS_TOKEN=pega_el_token_de_solo_lectura
-# App OAuth de Google (Google Cloud Console, cuenta agencia.narkan)
-GOOGLE_CLIENT_ID=xxxxx.apps.googleusercontent.com
-GOOGLE_CLIENT_SECRET=GOCSPX-xxxxx
-# URL pública exacta del conector (sin barra final)
-MCP_BASE_URL=https://mcp.plasa.cl
-# Correos autorizados (separados por coma)
-ALLOWED_EMAILS=agencia.narkan@gmail.com
+# Secreto de la URL del conector (>=16 chars). Genera: python3 -c "import secrets;print(secrets.token_urlsafe(24))"
+MCP_SECRET=pega_un_secreto_largo_aleatorio
 ```
 
 - [ ] **Step 4: Crear `remote/README.md`**
@@ -895,28 +867,26 @@ ALLOWED_EMAILS=agencia.narkan@gmail.com
 # Meta Ads MCP remoto (claude.ai) — Narkan
 
 Conector web de **solo lectura** para usar Meta Ads desde **claude.ai en el navegador**.
-Despliegue en el VPS con Dokploy; los trabajadores lo añaden como conector y entran con Google.
+Sin login: el acceso es una URL con un secreto (`https://mcp.plasa.cl/<MCP_SECRET>/mcp`).
 
 ## Variables de entorno (en Dokploy, nunca en git)
-Ver `.env.example`: `META_ACCESS_TOKEN`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`,
-`MCP_BASE_URL`, `ALLOWED_EMAILS`.
+Ver `.env.example`: `META_ACCESS_TOKEN`, `MCP_SECRET`.
 
 ## Local
 ```bash
 cd remote
 uv sync
 env $(grep -v '^#' .env | xargs) uv run uvicorn app.server:app --host 0.0.0.0 --port 8000
-# /health -> 200 ; /mcp sin token -> 401
+# /health -> 200 ; /<MCP_SECRET>/mcp -> endpoint MCP ; otras rutas -> 404
 ```
 
-## Despliegue (resumen — ver el plan para el detalle)
-1. App OAuth de Google con redirect `https://mcp.plasa.cl/auth/callback`.
-2. DNS `mcp.plasa.cl` -> IP del VPS.
-3. Servicio en Dokploy (build path `remote/`), variables de entorno, dominio `mcp.plasa.cl` con HTTPS.
+## Despliegue (resumen — ver DEPLOY.md)
+1. DNS `A: mcp.plasa.cl -> 173.249.49.22` (único paso manual).
+2. Servicio en Dokploy (build path `remote/`) con `META_ACCESS_TOKEN` y `MCP_SECRET`, dominio `mcp.plasa.cl` con HTTPS.
 
 ## Uso (trabajador)
-claude.ai -> Ajustes -> Conectores -> Añadir conector -> `https://mcp.plasa.cl` ->
-iniciar sesión con `agencia.narkan@gmail.com` -> preguntar.
+claude.ai -> Ajustes -> Conectores -> Añadir conector -> pegar
+`https://mcp.plasa.cl/<MCP_SECRET>/mcp` -> preguntar. Sin login, sin instalar nada.
 
 Solo lectura: imposible crear/editar/gastar. Basado en el reporting de konquest (MIT).
 ````
