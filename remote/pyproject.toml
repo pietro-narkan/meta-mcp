@@ -1,0 +1,17 @@
+[project]
+name = "narkan-meta-remote"
+version = "0.1.0"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "fastmcp>=2.12",
+    "uvicorn>=0.30",
+    "httpx>=0.28",
+    "starlette>=0.40",
+]
+
+[dependency-groups]
+dev = ["pytest>=8", "pytest-asyncio>=0.24", "respx>=0.21"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+pythonpath = ["."]
