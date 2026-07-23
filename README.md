@@ -1,7 +1,7 @@
 # Meta Ads MCP (solo lectura) — Narkan
 
 Consulta los datos de Meta Ads de las cuentas de la agencia **en lenguaje natural
-desde Claude Code**. Es de **solo lectura**: puedes ver campañas, conjuntos de
+desde Claude Code, Claude.ai o ChatGPT web**. Es de **solo lectura**: puedes ver campañas, conjuntos de
 anuncios, anuncios e insights, pero no se puede crear, editar ni gastar nada.
 
 ## Requisitos
@@ -35,6 +35,13 @@ Abre Claude Code dentro de la carpeta `meta-mcp` y pregunta, por ejemplo:
 - "Compara el CTR de Bellas Todas vs Spa Infinity en los últimos 30 días."
 - "Dame el gasto por cuenta de los últimos 7 días."
 - "¿Qué conjuntos de anuncios están pausados en Fiorenza?"
+
+## Claude.ai y ChatGPT web
+
+El servidor remoto vive en [`remote/`](remote/) y usa MCP Streamable HTTP sobre
+HTTPS. No instala ni ejecuta código local en el navegador. La arquitectura,
+despliegue y pasos de conexión están documentados en
+[`remote/README.md`](remote/README.md).
 
 ## Seguridad
 - **Solo lectura.** El token tiene permiso `ads_read`: imposible gastar, crear o borrar.

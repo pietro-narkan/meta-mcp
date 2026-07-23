@@ -1,4 +1,4 @@
-"""Regression test: the secret-path ASGI gate."""
+"""Regression tests for the remote MCP ASGI surface."""
 from starlette.testclient import TestClient
 from app import server, security
 
@@ -24,4 +24,47 @@ def test_secret_path_gate():
             headers={"Accept": "application/json, text/event-stream"},
             json=INIT,
         )
-        assert r.status_code != 404
+        assert r.status_code == 200
+
+
+def test_cors_allows_claude_and_chatgpt_origins():
+    secret = security.require_secret()
+    with TestClient(server.app) as client:
+        for origin in server.ALLOWED_WEB_ORIGINS:
+            response = client.options(
+                f"/{secret}/mcp",
+                headers={
+                    "Origin": origin,
+                    "Access-Control-Request-Method": "POST",
+                    "Access-Control-Request-Headers": (
+                        "authorization,content-type,mcp-protocol-version"
+                    ),
+                },
+            )
+            assert response.status_code == 200
+            assert response.headers["access-control-allow-origin"] == origin
+
+
+def test_cors_does_not_allow_unknown_origins():
+    secret = security.require_secret()
+    with TestClient(server.app) as client:
+        response = client.options(
+            f"/{secret}/mcp",
+            headers={
+                "Origin": "https://example.invalid",
+                "Access-Control-Request-Method": "POST",
+            },
+        )
+        assert "access-control-allow-origin" not in response.headers
+
+
+async def test_all_tools_are_annotated_read_only():
+    registered = await server.mcp.list_tools()
+
+    assert len(registered) == 11
+    for tool in registered:
+        assert tool.annotations is not None
+        assert tool.annotations.readOnlyHint is True
+        assert tool.annotations.destructiveHint is False
+        assert tool.annotations.idempotentHint is True
+        assert tool.annotations.openWorldHint is True
