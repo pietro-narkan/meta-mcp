@@ -36,6 +36,18 @@ las 11 tools como `readOnly` para que el cliente las trate como consultas. La
 disponibilidad exacta de Developer mode depende del plan y las políticas del
 workspace; consulta la [guía oficial de OpenAI](https://developers.openai.com/apps-sdk/deploy/connect-chatgpt).
 
+## Resultados de Meta
+
+`get_insights` y `get_bulk_insights` solicitan a Meta tanto distribución como
+conversiones. Además de conservar `actions`, `action_values`, `conversions` y
+sus costos originales, exponen campos normalizados para compras, valor de
+compras, costo por compra, ROAS, leads, carrito, inicio de pago, vistas de
+landing y conversaciones/mensajes.
+
+Todos estos resultados son atribuidos por Meta para el periodo solicitado.
+Un campo `null` significa que Meta no lo devolvió para esa fila. El servicio no
+consulta Shopify, WooCommerce, CRM, ERP ni otra fuente de facturación externa.
+
 > La URL secreta es una credencial compartida. Para acceso individual, auditoría
 > por persona o una distribución pública se debe migrar a OAuth 2.1.
 
