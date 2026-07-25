@@ -27,6 +27,31 @@ def test_secret_path_gate():
         assert r.status_code == 200
 
 
+def test_mcp_endpoint_accepts_trailing_slash_without_redirect():
+    secret = security.require_secret()
+    with TestClient(server.app, follow_redirects=False) as client:
+        response = client.post(
+            f"/{secret}/mcp/",
+            headers={"Accept": "application/json, text/event-stream"},
+            json=INIT,
+        )
+        assert response.status_code == 200
+        assert "location" not in response.headers
+
+
+def test_mcp_endpoint_tolerates_sse_only_and_wildcard_accept():
+    secret = security.require_secret()
+    with TestClient(server.app) as client:
+        for accept in ("text/event-stream", "*/*"):
+            response = client.post(
+                f"/{secret}/mcp",
+                headers={"Accept": accept},
+                json=INIT,
+            )
+            assert response.status_code == 200
+            assert response.headers["content-type"].startswith("text/event-stream")
+
+
 def test_cors_allows_claude_and_chatgpt_origins():
     secret = security.require_secret()
     with TestClient(server.app) as client:
